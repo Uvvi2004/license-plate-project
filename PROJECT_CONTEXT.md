@@ -320,13 +320,24 @@ Drive persistence gotchas.
   use the venv, not system Python)
 - Registered as a Jupyter kernel: **"License Plate Project (venv)"**
   (`license_plate_venv`) — select this kernel when opening any notebook here.
-- Installed (see [requirements.txt](requirements.txt), final working pins):
-  `ultralytics==8.4.95`, `torch==2.13.0` (CPU build), `torchvision==0.28.0`,
-  `paddleocr==2.9.1`, `paddlepaddle==2.6.2` (pinned — see OCR gotchas above),
-  `numpy==1.26.4` (pinned <2 — paddleocr's `imgaug` dependency errors on
-  numpy 2.0), `opencv-python==4.10.0.84`, `jupyter`, `ipykernel`.
+- **Dependencies split (2026-07-14):** `requirements.txt` is runtime-only
+  (`ultralytics==8.4.95`, `torch==2.13.0` CPU build, `torchvision==0.28.0`,
+  `paddleocr==2.9.1`, `paddlepaddle==2.6.2` — pinned, see OCR gotchas above,
+  `numpy==1.26.4` — pinned <2, paddleocr's `imgaug` dependency errors on
+  numpy 2.0, `opencv-python==4.10.0.84`, `pandas`, `tqdm`, `rapidfuzz`).
+  `requirements-dev.txt` adds `jupyter`, `ipykernel`, `pytest` on top (via
+  `-r requirements.txt`) — needed on this dev machine, **not needed on the
+  Pi**, which will never open a notebook or run the test suite locally.
+  Install with `pip install -r requirements-dev.txt` here;
+  `pip install -r requirements.txt` alone is what the Pi will eventually use.
   `easyocr` was installed during the comparison, then removed entirely once
   PaddleOCR was confirmed the winner — not a project dependency.
+  **Caveat:** this runtime `requirements.txt` is the *dev-machine* (Windows
+  x86_64) pinned reality — it will NOT install as-is on the Pi's ARM64,
+  since `paddlepaddle` has no ARM64 wheel (see the open Phase 8 question
+  above). The Pi will need its own, different requirements list once the
+  ONNX/Paddle-Lite conversion work happens — don't assume this file ports
+  directly.
 - Verified: `models/best.pt` loads correctly (`model.names == {0:
   'License_Plate'}`), `model.predict()` runs end-to-end, and the full
   detect→crop→OCR pipeline correctly reads a real US plate (`6FVZ747`, 0.97
@@ -368,7 +379,8 @@ license_plate_project/
 │   ├── demo.mp4                       # tutorial demo video
 │   └── demo2.jpg                      # US plate (California), ground truth 6FVZ747
 ├── venv/                            # Python 3.10 virtual environment
-├── requirements.txt
+├── requirements.txt                 # runtime deps only - what the Pi will eventually use
+├── requirements-dev.txt             # + jupyter/ipykernel/pytest, for this dev machine
 └── PROJECT_CONTEXT.md               # this file
 ```
 
