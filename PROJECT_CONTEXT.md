@@ -270,6 +270,27 @@ This is a heuristic improvement, not full box/motion tracking — still
 documented as a real Phase-9-territory upgrade if this heuristic starts
 failing on new footage (to be uploaded).
 
+**Follow-up fix (same day):** manually checked the resulting table row by
+row against the source data rather than trusting it, and found two more
+real issues:
+- `N894-N` sat as its own row next to `N-894-JV` despite scoring 71.4
+  similarity (above threshold) — caused by a processing-order quirk: pass 1
+  only merges new raw events into existing clusters, it never re-compares
+  two already-finished clusters against each other.
+- `L605-HZ`/`L-605-HZ` (93.3 similarity) and `ZH-509-7`/`ZH-509-1` (87.5
+  similarity) are the same plates, split by a time gap just over the 1.5s
+  cutoff (1.73s/1.90s) — likely a brief detection dropout.
+
+Fix: a second pass re-compares every pair of finished clusters, with a
+wider allowed gap (3s) specifically when similarity is very high (≥85).
+**Explicitly checked this doesn't overreach:** `ZH-509-1` vs `L-605-HZ`
+scores only 37.5 and correctly stayed separate, despite overlapping in
+time — important because this project's trucks may have two legally
+separate plates (tractor + trailer, see TN section above), so a rule that
+merges low-confidence overlapping reads *without* a text-similarity check
+would risk silently deleting a real second plate. Result: 25 → 21 clusters,
+confirmed correct on manual inspection.
+
 ### Open question for Phase 8 (Pi deployment)
 
 The `paddlepaddle` pip wheel is x86_64-only (Windows/Linux/macOS) — there is
