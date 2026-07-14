@@ -1,7 +1,5 @@
 # Warehouse Truck License Plate Tracking System — Project Context
 
-Migrated from Google Colab + Claude Desktop to local VS Code on 2026-07-13.
-
 ## Goal
 
 Camera-based system to track incoming/outgoing trucks at a warehouse: truck
@@ -45,19 +43,22 @@ treating "prototype works" and "enterprise-ready" as the same finish line.
      vs. trailer per TN legal section below)
    - ⬜ Live demo: real trucks passing, live output — table/log for now,
      Postgres once Phase 10 exists
-9. ⬜ **Production hardening** (new phase — closes the "notebook prototype"
-    vs. "enterprise code" gap explicitly)
-   - ⬜ Extract the pipeline out of the notebook into a proper Python service
-   - ⬜ Error handling around every stage (camera disconnect, inference
-     failure, OCR failure) instead of letting exceptions crash the process
-   - ⬜ Structured logging
-   - ⬜ Automated test suite (`pad_box`, `select_plate_text`, dedup clustering
-     logic) so future changes can't silently break correctness
-   - ⬜ systemd service with auto-restart/supervision
-   - ⬜ Config management — move hardcoded constants (`PAD_RATIO`,
-     `GAP_SECONDS`, `MIN_FRAMES`, etc.) out of code into a config file
-   - ⬜ Reliability for 24/7 operation — SD card wear mitigation (e.g.
-     read-only rootfs or external SSD), watchdog/health checks
+9. 🔶 **Production hardening** (closes the "notebook prototype" vs.
+    "enterprise code" gap explicitly) — see "Phase 9 Hardening" section
+    below for the full writeup
+   - ✅ Extract the pipeline out of the notebook into `license_plate_pipeline/`
+   - ✅ Error handling around detection/OCR (logs and skips a bad
+     frame/crop instead of crashing the whole run)
+   - ✅ Automated test suite (`pad_box`, `select_plate_text`, both dedup
+     passes) using the real calibration cases as regression tests
+   - ✅ Config management — constants moved to `config.py`
+   - ⬜ Structured logging beyond basic error logging (log levels, format,
+     destination) — not yet needed at this scale, revisit if it becomes hard
+     to follow
+   - ⬜ systemd service with auto-restart/supervision — Pi-specific, waits
+     for Phase 8
+   - ⬜ Reliability for 24/7 operation — SD card wear mitigation, watchdog —
+     Pi-specific, waits for Phase 8
 10. ⬜ Server (FastAPI or Spring Boot) + PostgreSQL + dashboard
     - ⬜ Schema design: plate number, first-seen, last-seen, confidence,
       status, camera/site id
@@ -352,10 +353,17 @@ Drive persistence gotchas.
 ```
 license_plate_project/
 ├── models/
-│   └── best.pt                     # copy of trained weights, for easy notebook access
+│   └── best.pt                     # copy of trained weights, for easy access
 ├── runs/train/                      # full Ultralytics training run (curves, results.csv, weights/)
+├── license_plate_pipeline/          # Phase 9: the tested, hardened pipeline implementation
+│   ├── config.py                     # all tunable constants, calibrated against real data
+│   ├── detection.py                  # model loading, pad_box, detect_boxes (error-handled)
+│   ├── ocr.py                        # OCR engine loading, preprocessing, select_plate_text
+│   ├── dedup.py                      # both clustering passes
+│   └── pipeline.py                   # orchestration: read_plates_from_frame/_image, process_video
+├── tests/                           # pytest suite - pure logic, real calibration cases as regression tests
 ├── notebooks/
-│   └── license_plate_pipeline.ipynb  # the whole pipeline: load model -> detect -> crop -> OCR compare -> final function
+│   └── license_plate_pipeline.ipynb  # interactive walkthrough; imports from license_plate_pipeline/, doesn't duplicate it
 ├── test_images/
 │   ├── demo.mp4                       # tutorial demo video
 │   └── demo2.jpg                      # US plate (California), ground truth 6FVZ747
@@ -364,14 +372,44 @@ license_plate_project/
 └── PROJECT_CONTEXT.md               # this file
 ```
 
-## Immediate Next Step
+## Phase 9 Hardening (2026-07-14)
 
-**Phase 7 data cleaning: confidence-based dedup clustering** (see Roadmap
-above) — group events by time overlap instead of exact OCR text, keep the
-highest-confidence reading per cluster. Not started yet, planning only so
-far. Everything after that follows the phase order in the Roadmap section
-above; don't re-derive next steps from scratch, that list is the source of
-truth going forward.
+Extracted the notebook's detect/OCR/dedup logic into `license_plate_pipeline/`,
+a proper package with error handling and a pytest suite — started this now
+(while waiting on the Pi connection and better test footage) rather than
+waiting for Phase 8, since it doesn't need either.
+
+- **Error handling:** `detection.detect_boxes` and `ocr.read_crop` catch and
+  log exceptions per-frame/per-crop instead of letting one bad frame crash
+  a whole video run.
+- **Tests lock in real behavior, not hypotheticals:** `tests/test_dedup.py`
+  uses the *actual* calibration cases found while building this (the
+  `R-183-JF`/`R-183JF` flicker merge, the `N894-N` processing-order bug, the
+  `ZH-509-1` vs `L-605-HZ` non-merge) as regression tests — if a future
+  change breaks any of these, the tests catch it immediately.
+- **Notebook now imports from the package** instead of duplicating function
+  definitions — re-ran it end to end after the refactor and confirmed
+  byte-identical results (71 → 25 → 21 clusters, same final table). One
+  deliberate exception: the notebook's step 7 (`detect_and_read`) still
+  shows *raw, unfiltered* OCR output (via `detection.detect_boxes` +
+  `ocr.read_crop` directly, bypassing `select_plate_text`) — that's
+  intentional, preserving the pedagogical point that step 8 exists to solve
+  the sticker/dealer-text noise problem visible in step 7.
+- **Not done yet:** the systemd-supervision and SD-card-wear items are
+  genuinely Pi-specific and still wait for Phase 8.
+
+## Immediate Next Steps
+
+1. **Validate against additional real-world test videos** — blocked on
+   user upload of more representative (US/TN, ideally truck) footage.
+2. **Live webcam test locally** — postponed by user choice, not blocked on
+   anything; actionable whenever.
+3. Both Pi-related items (ONNX/NCNN export, live camera integration) are
+   paused until the user explicitly reconnects Pi work — don't start them
+   unprompted.
+
+Everything after that follows the phase order in the Roadmap section above;
+don't re-derive next steps from scratch, that list is the source of truth.
 
 Also still outstanding, not urgent: confirm the Roboflow API key was
 regenerated (a key was pasted in plain text early in this project's history
