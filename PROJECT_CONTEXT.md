@@ -28,11 +28,9 @@ treating "prototype works" and "enterprise-ready" as the same finish line.
 6. ✅ OCR added — switched to PaddleOCR after head-to-head test (see below)
 7. 🔶 Video pipeline + data cleaning (in progress)
    - ✅ Frame-by-frame detect→crop→OCR on video, outputs a timestamped events table
-   - ⬜ **Data cleaning: confidence-based dedup clustering** — next up. Group
-     events by time overlap (not just exact OCR text), keep the
-     highest-confidence reading per cluster, drop the rest. Fixes the
-     duplicate-row problem seen when a truck sits in frame long enough for
-     OCR to flicker between a correct and incorrect reading.
+   - ✅ **Data cleaning: confidence-based dedup clustering** — see "Dedup
+     Clustering" section below for the full (honest, two-failed-attempts)
+     writeup
    - ⬜ Validate against additional real-world test videos (to be uploaded)
    - ⬜ Live webcam feed test on this laptop, before moving to the Pi
 8. ⬜ Raspberry Pi 5 + Camera Module 3 deployment
@@ -245,6 +243,32 @@ matching**, to avoid fragmenting one vehicle sighting into several rows.
 onto that table's schema — building this now previews what those rows will
 look like, and the flicker-fragmentation problem needs solving *before*
 writing to the DB, or duplicate rows will pile up there too.
+
+## Dedup Clustering — DONE (Phase 7, 2026-07-14)
+
+Section 9 of `notebooks/license_plate_pipeline.ipynb` fixes the fragmentation
+problem flagged above. Took two failed attempts before landing on a working
+approach — worth recording exactly why, so this doesn't get re-tried blindly:
+
+1. **Time proximity alone:** merged 71 sub-events into just 2 clusters,
+   combining several genuinely *different* plates. `demo.mp4` turns out to be
+   continuous traffic with sub-second gaps between different vehicles — about
+   the same gap size as OCR flicker within one sighting. Time alone can't
+   distinguish the two.
+2. **Time + text similarity (`rapidfuzz`), but only checked the
+   most-recently-created cluster:** better (27 clusters), but the flagship
+   example (`R-183-JF`/`R-183JF`) still didn't merge — an unrelated reading
+   interleaving in time between two truly-same-plate readings caused a split.
+3. **Fix: check every cluster still within the time window, merge into the
+   best text match.** Similarity threshold (70 on `rapidfuzz.fuzz.ratio`)
+   calibrated against real data: same-plate flicker pairs scored 87-94,
+   different-plate pairs scored 25-50. Result: 71 → 25 clusters,
+   `R-183-JF`/`R-183JF` and `H-044-LX`/`H-644-LX` correctly merge, genuinely
+   different plates stay separate.
+
+This is a heuristic improvement, not full box/motion tracking — still
+documented as a real Phase-9-territory upgrade if this heuristic starts
+failing on new footage (to be uploaded).
 
 ### Open question for Phase 8 (Pi deployment)
 
