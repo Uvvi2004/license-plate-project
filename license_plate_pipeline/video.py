@@ -11,9 +11,10 @@ import logging
 
 import cv2
 
-from license_plate_pipeline.config import GAP_SECONDS, MIN_FRAMES
+from license_plate_pipeline.config import GAP_SECONDS, MIN_FRAMES, MIN_PLATE_CONFIDENCE
 from license_plate_pipeline.dedup import dedup_events
 from license_plate_pipeline.tracking import PlateTracker
+from license_plate_pipeline.validation import is_valid_plate
 
 logger = logging.getLogger(__name__)
 
@@ -72,4 +73,10 @@ def process_video_tracked(
     logger.info("Tracked %d frames with %d OCR calls -> %d raw plate events", frame_idx, ocr_calls, len(raw_events))
 
     clusters = dedup_events(raw_events)
-    return [c for c in clusters if c["frame_count"] >= min_frames]
+    return [
+        c
+        for c in clusters
+        if c["frame_count"] >= min_frames
+        and c["best_confidence"] >= MIN_PLATE_CONFIDENCE
+        and is_valid_plate(c["plate_text"])
+    ]

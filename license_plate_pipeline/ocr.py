@@ -1,18 +1,16 @@
 """PaddleOCR reading: engine loading, crop preprocessing, and plate-text selection."""
 
 import logging
-import re
 
 import cv2
 from paddleocr import PaddleOCR
 
-from license_plate_pipeline.config import PLATE_TEXT_PATTERN, UPSCALE_FACTOR
+from license_plate_pipeline.config import UPSCALE_FACTOR
+from license_plate_pipeline.validation import display_plate, is_valid_plate
 
 logger = logging.getLogger(__name__)
 
 _reader = None
-
-_PLATE_TEXT_RE = re.compile(PLATE_TEXT_PATTERN)
 
 
 def get_reader():
@@ -32,12 +30,16 @@ def preprocess_for_ocr(crop):
 
 
 def select_plate_text(ocr_lines):
-    """Pick the fragment most likely to be the actual plate number, not nearby sticker/dealer text."""
-    plate_like = [(t, c) for t, c in ocr_lines if _PLATE_TEXT_RE.fullmatch(t)]
-    if plate_like:
-        return max(plate_like, key=lambda tc: tc[1])
-    if ocr_lines:
-        return max(ocr_lines, key=lambda tc: tc[1])
+    """Pick the highest-confidence fragment that is a valid plate string.
+
+    Returns None if no fragment looks like a real plate - this deliberately does
+    NOT fall back to "highest confidence anything", because that let sticker
+    text, state names, and OCR junk through as events. See
+    license_plate_pipeline.validation.
+    """
+    valid = [(display_plate(t), c) for t, c in ocr_lines if is_valid_plate(t)]
+    if valid:
+        return max(valid, key=lambda tc: tc[1])
     return None
 
 

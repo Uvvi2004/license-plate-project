@@ -156,7 +156,36 @@ gone. Tracking should fix fragmentation (fragments came from many separate
 noisy per-frame reads). If the per-track best reads are still wrong where
 PaddleOCR's were right, proceed to Step 3; otherwise **skip Step 3 entirely**.
 
-## Step 3 — English OCR models (ONLY if Step 2 still shows misreads)
+> **DONE (2026-07-16).** Tested on three uploaded 4K real-world clips (a US
+> dealership lot, a UK street, and traffic CCTV). Tracking held, but RapidOCR's
+> default **Chinese** models produced real junk on this harder footage: numeric
+> fragments (`619879`), state-name misreads (`IDAHO`→`HDAHO`), and a Chinese
+> province glyph (`皖EKH9211`). Two responses:
+> - **Step 2.5 (below), done now:** a plate-validation layer that rejects that
+>   junk at the output. Reliable, offline, ships immediately.
+> - **Step 3 (English models):** now clearly warranted, and confirmed feasible
+>   (GitHub + ModelScope reachable from here). But best tuned/validated on real
+>   *warehouse-gate* footage, not stock clips of dealerships/streets that don't
+>   resemble the deployment — so it's the next focused task, ideally alongside
+>   first real Pi footage.
+
+## Step 2.5 — Plate-validation layer (DONE 2026-07-16)
+
+New `license_plate_pipeline/validation.py`: `is_valid_plate` (5-8 alphanumeric
+chars, ignoring separators, **must contain a letter AND a digit**),
+`canonical_plate`/`display_plate` (strip non-ASCII, so `皖EKH9211`→`EKH9211` is
+recovered rather than dropped). Wired in three places:
+- `ocr.py` + `pi/ocr.py` `select_plate_text`: return the best *valid* plate, or
+  `None` — no more "fall back to highest-confidence anything" (that was the junk
+  source).
+- `video.py`: final events must pass `is_valid_plate` AND clear
+  `MIN_PLATE_CONFIDENCE` (0.75) — kills low-confidence shape-valid misreads.
+
+Kills numeric fragments, state-name reads, Chinese glyphs, and low-conf junk;
+keeps every real plate in the test footage (all have a letter+digit, ≥0.87
+conf). Tests in `tests/test_validation.py` built from the actual failures.
+
+## Step 3 — English OCR models (warranted; validate on real Pi footage)
 
 The paddle2onnx conversion on Windows is dead-ended (DLL/ABI error,
 documented in PROJECT_CONTEXT.md). Do **not** resume debugging it. Cheaper

@@ -17,6 +17,17 @@ UPSCALE_FACTOR = 3
 # OCR fragment selection - plate-like text vs. nearby sticker/dealer text
 PLATE_TEXT_PATTERN = r"[A-Za-z0-9]{5,8}"
 
+# Plate validity: what counts as a real plate string vs. OCR junk (numeric
+# fragments, state-name misreads like "IDAHO", Chinese-model hallucinations
+# like "皖EKH9211"). A valid plate is 5-8 alphanumeric chars (dashes/spaces
+# ignored) and contains BOTH a letter and a digit. Non-ASCII chars are stripped
+# before checking. See license_plate_pipeline/validation.py.
+MIN_PLATE_CHARS = 5
+MAX_PLATE_CHARS = 8
+# Drop an event whose best read is below this confidence - catches low-quality
+# misreads that still happen to have a plate-like shape (e.g. "LEKH92" @ 0.65).
+MIN_PLATE_CONFIDENCE = 0.75
+
 # Video/live dedup: group same-text sightings into one event
 GAP_SECONDS = 1.5
 MIN_FRAMES = 3

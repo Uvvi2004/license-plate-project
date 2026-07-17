@@ -24,17 +24,14 @@ frames per tracked plate (license_plate_pipeline.tracking), not every frame.
 """
 
 import logging
-import re
 
 from rapidocr_onnxruntime import RapidOCR
 
-from license_plate_pipeline.config import PLATE_TEXT_PATTERN
+from license_plate_pipeline.validation import display_plate, is_valid_plate
 
 logger = logging.getLogger(__name__)
 
 _reader = None
-
-_PLATE_TEXT_RE = re.compile(PLATE_TEXT_PATTERN)
 
 
 def get_reader():
@@ -52,14 +49,14 @@ def preprocess_for_ocr(crop):
 
 
 def select_plate_text(ocr_lines):
-    # Duplicated from license_plate_pipeline.ocr rather than imported, so this
-    # module never pulls in paddleocr/paddlepaddle - the whole point of the
-    # RapidOCR path.
-    plate_like = [(t, c) for t, c in ocr_lines if _PLATE_TEXT_RE.fullmatch(t)]
-    if plate_like:
-        return max(plate_like, key=lambda tc: tc[1])
-    if ocr_lines:
-        return max(ocr_lines, key=lambda tc: tc[1])
+    """Highest-confidence fragment that is a valid plate string, else None.
+
+    Same logic as license_plate_pipeline.ocr.select_plate_text (shares the
+    validation module); does not fall back to "highest confidence anything".
+    """
+    valid = [(display_plate(t), c) for t, c in ocr_lines if is_valid_plate(t)]
+    if valid:
+        return max(valid, key=lambda tc: tc[1])
     return None
 
 
