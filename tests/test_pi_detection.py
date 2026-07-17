@@ -1,8 +1,13 @@
 import pytest
 
-pytest.importorskip("ultralytics")
+pytest.importorskip("onnxruntime")
 
-from license_plate_pipeline.detection import pad_box  # noqa: E402
+from license_plate_pipeline.pi.detection import pad_box  # noqa: E402
+
+
+# Same behavior as license_plate_pipeline.detection.pad_box, duplicated on purpose
+# (see pi/detection.py module docstring - avoids pulling in ultralytics/torch).
+# These tests exist so the two copies can't silently drift apart.
 
 
 def test_pad_box_pads_each_side():
