@@ -31,14 +31,36 @@ treating "prototype works" and "enterprise-ready" as the same finish line.
      writeup
    - ⬜ Validate against additional real-world test videos (to be uploaded)
    - ⬜ Live webcam feed test on this laptop, before moving to the Pi
-8. ⬜ Raspberry Pi 5 + Camera Module 3 deployment
-   - ⬜ Export YOLO to NCNN or ONNX (ARM-friendly runtime)
-   - ⬜ Export PaddleOCR to ONNX (via `paddle2onnx`) or Paddle-Lite — no
-     official ARM64 `paddlepaddle` pip wheel exists, see gotcha below
-   - ⬜ Re-validate converted models against known test cases (e.g. `6FVZ747`)
-     to confirm conversion didn't silently change accuracy
-   - ⬜ Live camera integration (Camera Module 3 or an upgraded global-shutter
-     camera — see Camera Hardware note below) feeding the same pipeline
+8. 🔶 Raspberry Pi 5 + USB webcam deployment (hardware now in hand; user has
+    a plain USB webcam, not the CSI Camera Module 3 originally planned —
+    simpler, works via standard `cv2.VideoCapture`/V4L2, no `picamera2` needed)
+   - ✅ **Export YOLO → ONNX**, via `model.export(format="onnx")`. Validated
+     on the dev machine against `demo2.jpg`: ONNX gave
+     `box=(251.5,114.5,406.2,205.4) conf=0.876` vs. `best.pt`'s
+     `box=(252.2,115.0,405.9,205.5) conf=0.874` — sub-pixel difference, not
+     a regression. `models/best.onnx` committed.
+   - ✅ **OCR: switched to `rapidocr-onnxruntime`**, not a hand-rolled
+     `paddle2onnx` conversion — see "Pi OCR Engine Decision" section below
+     for the full reasoning and a real finding worth remembering (the
+     dev-machine's grayscale+equalize preprocessing actively hurts RapidOCR).
+   - ✅ New `license_plate_pipeline/pi/` subpackage
+     (`detection.py`/`ocr.py`/`pipeline.py`) — same public interface as the
+     dev-machine modules, backed by `onnxruntime`/RapidOCR instead of
+     `ultralytics`/`paddleocr`. Existing dev-machine modules and the notebook
+     are untouched.
+   - ✅ Validated against `demo2.jpg`: full pi pipeline correctly reads
+     `6FVZ747` at 0.975 confidence (vs. PaddleOCR's 0.97 — equivalent).
+   - 🔶 Validated against `demo.mp4` end-to-end (dedup table) — see "Pi
+     Pipeline Validation" section below for the numbers.
+   - ✅ `requirements-pi.txt` (lean: `onnxruntime`, `opencv-python`,
+     `rapidocr-onnxruntime`, `numpy`, `pandas`, `rapidfuzz`, `tqdm` — no
+     `torch`/`ultralytics`/`paddleocr`/`paddlepaddle`) + `PI_SETUP.md` +
+     `pi_scripts/smoke_test.py`/`webcam_test.py` for the user to run
+     themselves on the actual hardware.
+   - ⬜ Actually run `PI_SETUP.md` on the physical Pi (user will run this
+     themselves) — everything above was validated on the dev machine only;
+     ONNX Runtime is cross-platform-consistent in principle, but the real
+     hardware hasn't confirmed it yet.
    - ⬜ Physical placement decision (indoor mounting, dock-door angle, tractor
      vs. trailer per TN legal section below)
    - ⬜ Live demo: real trucks passing, live output — table/log for now,
@@ -292,15 +314,115 @@ merges low-confidence overlapping reads *without* a text-similarity check
 would risk silently deleting a real second plate. Result: 25 → 21 clusters,
 confirmed correct on manual inspection.
 
-### Open question for Phase 8 (Pi deployment)
+### Phase 8 Question — RESOLVED: ONNX Runtime for both models
 
-The `paddlepaddle` pip wheel is x86_64-only (Windows/Linux/macOS) — there is
-**no official pip wheel for Raspberry Pi's ARM64**. Real Pi deployment will
-likely need either **Paddle-Lite** (Baidu's dedicated ARM/mobile inference
-runtime) or exporting the PP-OCR models to ONNX and running them via
-`onnxruntime` (which does have ARM64 wheels). This wasn't resolved yet —
-flag it before starting Phase 8, don't assume today's PaddleOCR setup
-ports directly to the Pi.
+The `paddlepaddle` pip wheel is x86_64-only — there is no official pip wheel
+for Raspberry Pi's ARM64. **Decision: export both models to ONNX and run them
+via `onnxruntime`** (which does have ARM64 wheels), rather than PyTorch
+(Ultralytics' default runtime) or Paddle-Lite. See the two sections below for
+the detection export and the OCR engine decision specifically.
+
+### Pi Detection: YOLO → ONNX
+
+`model.export(format="onnx")` (Ultralytics' built-in exporter) against
+`models/best.pt` → `models/best.onnx` (9.4MB). YOLO26 was partly chosen back
+in Phase 4 for its NMS-free head design, which simplifies ONNX Runtime
+inference — output is `[1, 300, 6]` (300 candidate boxes, each
+`[x1,y1,x2,y2,conf,cls]` in letterboxed 640×640 space), just needs a
+confidence-threshold filter, no separate NMS post-processing step.
+
+Validated against `demo2.jpg`: ONNX gave `box=(251.5,114.5,406.2,205.4)
+conf=0.876` vs. `best.pt`'s `box=(252.2,115.0,405.9,205.5) conf=0.874` —
+sub-pixel difference, expected floating-point/letterbox-rounding variance,
+not a regression.
+
+**Gotcha hit during export:** running `model.export(format="onnx")` in the
+same venv as PaddleOCR upgraded `protobuf` from 3.20.2 → 7.35.1 (a
+transitive dependency of the `onnx`/`onnxslim` export tooling), which broke
+PaddleOCR (`paddlepaddle==2.6.2` requires `protobuf<=3.20.2`) — confirmed by
+testing immediately after (`TypeError: Descriptors cannot be created
+directly`). Fixed by downgrading protobuf back, but this is *why* all Pi/ONNX
+work now happens in a **separate venv** (`venv-pi/`, gitignored, not
+committed) rather than the main dev `venv/` — `onnx`'s protobuf requirement
+and `paddlepaddle`'s are fundamentally incompatible in one environment, not
+just a version-picking problem.
+
+### Pi OCR Engine Decision: RapidOCR, not a hand-rolled `paddle2onnx` conversion
+
+Two options were considered for replacing PaddleOCR on the Pi:
+1. **Manual `paddle2onnx` export** of the already-cached PP-OCRv3/v4 model
+   files + hand-writing the DB box-decoding and CTC-decoding post-processing
+   ourselves. Full control, but substantial custom code with real bug risk
+   that can't be verified against the actual ARM hardware.
+2. **`rapidocr-onnxruntime` (chosen):** an actively maintained (v1.4.4, 70+
+   releases) pure-`onnxruntime` wrapper around the same PP-OCR model family,
+   with pre-exported ONNX models bundled in the pip package itself — this
+   also eliminates the `paddleocr.bj.bcebos.com` DNS gotcha entirely, since
+   nothing needs downloading from Baidu Cloud at all.
+
+**Real finding while validating this (not assumed):** tested three
+preprocessing variants against the `demo2.jpg` crop (ground truth `6FVZ747`):
+
+| Preprocessing | Result |
+|---|---|
+| Raw crop, no preprocessing | `'6FVZ747'` @ 0.985 (correct) |
+| 3x upscale, color, no grayscale | `'6FVZ747'` @ 0.975 (correct) |
+| 3x upscale + grayscale + equalize (the dev-machine PaddleOCR tuning) | **plate text not detected at all** |
+
+The grayscale+histogram-equalization step that was specifically calibrated
+for PaddleOCR (see "OCR Accuracy" above) actively **hurts** RapidOCR — its
+bundled model reacts differently to that preprocessing. Reusing the
+dev-machine tuning unchanged would have been a silent regression.
+`license_plate_pipeline/pi/ocr.py` uses upscale-only preprocessing instead
+(keeps the "bigger pixels help distant/small plates" benefit without the
+harmful contrast step). `select_plate_text` and `pad_box` are duplicated
+(not imported) into the `pi/` modules specifically so they never pull in
+`paddleocr`/`ultralytics` — `tests/test_pi_detection.py` and
+`test_pi_ocr.py` exist so the duplicated copies can't silently drift from
+the originals.
+
+### Pi Pipeline Validation — mixed result, not a clean win
+
+Full `license_plate_pipeline.pi.pipeline` run against `demo.mp4` (same video,
+same dedup logic, same machine), compared against the already-validated
+PaddleOCR-based result:
+
+- **Speed: ~10x slower.** 1171.7s (~19.5 min) vs. PaddleOCR's ~2 min for the
+  same 631 frames. A real concern for the Pi, which will likely have *less*
+  CPU headroom than this dev machine, not more — this needs to be re-measured
+  on the actual hardware before assuming RapidOCR is viable for anything
+  resembling real-time use.
+- **Accuracy: 14 final events vs. PaddleOCR's 10** — and not just noisier
+  clustering. Several are genuinely wrong reads, not just fragments:
+
+  | RapidOCR read | Should be | Issue |
+  |---|---|---|
+  | `94-JV` | `N-894-JV` | truncated |
+  | `4-LX` / `H-6` | `H-644-LX` | split into two separate wrong pieces |
+  | `-RS` | `K-884-RS` | truncated |
+  | `66` | `66-HH-07` | truncated |
+  | `197-G9` | `R-197-G3` | truncated **and** misread (`G9` vs `G3`) |
+
+  Pattern: RapidOCR's internal text-region detection splits a single plate's
+  text into multiple separate pieces across different frames more
+  aggressively than PaddleOCR did — the same physical plate ends up read as
+  several different partial strings, each too dissimilar to the others to
+  merge under the existing text-similarity dedup check.
+
+**Important context:** the single-image test against `demo2.jpg` (the real
+US-plate ground-truth case) still came back correct (`6FVZ747` @ 0.975). The
+video-level fragmentation issue may be specific to `demo.mp4`'s harder
+conditions (compressed/blurrier footage, dash-containing multi-segment plate
+format) rather than a universal RapidOCR weakness — but it's still a real,
+measured signal about reliability across many frames, which is exactly the
+condition a live camera feed will also face.
+
+**Decision needed, not yet made:** whether to accept this tradeoff, tune
+RapidOCR's configuration, fall back to a manual `paddle2onnx` conversion
+(more custom code, but closer fidelity to the already-validated PaddleOCR
+behavior), or something else. Flagged to the user rather than resolved
+silently — this is exactly the fallback gate the original plan built in for
+this scenario.
 
 ## Concepts Already Covered (don't re-explain from scratch)
 
