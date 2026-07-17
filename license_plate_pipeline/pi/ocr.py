@@ -4,29 +4,31 @@ Same public interface as license_plate_pipeline.ocr (get_reader/read_crop/
 select_plate_text), so license_plate_pipeline.pi.pipeline can mirror the
 dev-machine pipeline.py exactly.
 
-Preprocessing is intentionally NOT the same as license_plate_pipeline.ocr's
-preprocess_for_ocr: tested against the demo2.jpg plate crop (ground truth
-6FVZ747) before writing this -
+Two speed decisions here, both measured on the demo2.jpg plate crop (see
+IMPLEMENTATION_PLAN.md "Root-cause diagnosis") rather than guessed:
 
-  raw crop, no preprocessing:            '6FVZ747' @ 0.985 (correct)
-  3x upscale, color, no grayscale:       '6FVZ747' @ 0.975 (correct)
-  3x upscale + grayscale + equalize
-  (the dev-machine PaddleOCR tuning):    plate text NOT detected at all
+- preprocess_for_ocr returns the crop UNCHANGED. Upscaling 1x/2x/3x gave
+  RapidOCR no accuracy gain (all read 6FVZ747 correctly) but cost a cubic
+  resize per call - so we don't. Contrast the dev-machine ocr.py, which DOES
+  upscale+equalize for PaddleOCR; RapidOCR's model reacts differently (grayscale
+  +equalize actually made it miss the plate entirely). The function is kept as
+  an identity pass so the interface/tests stay stable and a future tight-crop
+  optimization has an obvious hook.
+- read_crop calls RapidOCR with use_cls=False. The angle classifier added
+  ~400 ms/call (1363 -> 966 ms) and does nothing for a fixed, upright gate
+  camera that never produces rotated plates.
 
-RapidOCR's bundled model reacts differently to the grayscale/contrast-equalize
-step than PaddleOCR's did - reusing that tuning here would have been a silent
-regression. Using upscale-only: nearly ties the raw-crop score on this test
-and should still help on smaller/more-distant real-world crops than this one
-well-framed test image represents.
+The remaining ~950 ms/call is RapidOCR's internal text-detection stage. That is
+NOT trimmed here - it's addressed at the pipeline level by only OCR-ing a few
+frames per tracked plate (license_plate_pipeline.tracking), not every frame.
 """
 
 import logging
 import re
 
-import cv2
 from rapidocr_onnxruntime import RapidOCR
 
-from license_plate_pipeline.config import PLATE_TEXT_PATTERN, UPSCALE_FACTOR
+from license_plate_pipeline.config import PLATE_TEXT_PATTERN
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,9 @@ def get_reader():
 
 
 def preprocess_for_ocr(crop):
-    return cv2.resize(crop, None, fx=UPSCALE_FACTOR, fy=UPSCALE_FACTOR, interpolation=cv2.INTER_CUBIC)
+    # Identity: upscaling gave RapidOCR no accuracy gain but cost a resize/call.
+    # See module docstring. Kept as a hook for a future tight-crop fast path.
+    return crop
 
 
 def select_plate_text(ocr_lines):
@@ -70,7 +74,7 @@ def read_crop(crop):
 
     processed = preprocess_for_ocr(crop)
     try:
-        result, _elapse = get_reader()(processed)
+        result, _elapse = get_reader()(processed, use_cls=False)
     except Exception:
         logger.exception("OCR failed on this crop - skipping it")
         return []

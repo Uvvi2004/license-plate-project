@@ -5,9 +5,9 @@ import logging
 import cv2
 
 from license_plate_pipeline.config import GAP_SECONDS, MIN_FRAMES
-from license_plate_pipeline.dedup import dedup_events
 from license_plate_pipeline.detection import detect_boxes
 from license_plate_pipeline.ocr import read_crop, select_plate_text
+from license_plate_pipeline.video import process_video_tracked
 
 logger = logging.getLogger(__name__)
 
@@ -42,54 +42,12 @@ def process_video(video_path, gap_seconds=GAP_SECONDS, min_frames=MIN_FRAMES):
     Each event is a dict: plate_text, first_seen, last_seen, best_confidence,
     frame_count, readings (all raw OCR fragments merged into this event).
 
-    Raises FileNotFoundError if the video can't be opened at all. A frame that
-    fails to decode ends the read loop (correct for a finite video file - see
-    PROJECT_CONTEXT.md for why this isn't yet built out for a live/reconnecting
-    camera feed, which needs different handling in Phase 8).
+    Detection runs every frame; OCR runs only a few times per tracked plate
+    (see license_plate_pipeline.video / .tracking for why - it's the fix for
+    the per-frame OCR cost). Raises FileNotFoundError if the video can't be
+    opened at all.
     """
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise FileNotFoundError(f"Could not open video: {video_path}")
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if not fps:
-        cap.release()
-        raise RuntimeError(f"Video reports 0 fps, can't compute timestamps: {video_path}")
-
-    active_events = {}
-    finished_events = []
-    frame_idx = 0
-
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            timestamp = frame_idx / fps
-
-            for text, confidence in read_plates_from_frame(frame):
-                event = active_events.get(text)
-                if event is not None and timestamp - event["last_seen"] <= gap_seconds:
-                    event["last_seen"] = timestamp
-                    event["frame_count"] += 1
-                    event["best_confidence"] = max(event["best_confidence"], confidence)
-                else:
-                    if event is not None:
-                        finished_events.append(event)
-                    active_events[text] = {
-                        "plate_text": text,
-                        "first_seen": timestamp,
-                        "last_seen": timestamp,
-                        "best_confidence": confidence,
-                        "frame_count": 1,
-                    }
-
-            frame_idx += 1
-    finally:
-        cap.release()
-
-    finished_events.extend(active_events.values())
-    logger.info("Raw sub-events before dedup: %d", len(finished_events))
-
-    clusters = dedup_events(finished_events)
-    return [c for c in clusters if c["frame_count"] >= min_frames]
+    return process_video_tracked(
+        video_path, detect_boxes, read_crop, select_plate_text,
+        gap_seconds=gap_seconds, min_frames=min_frames,
+    )

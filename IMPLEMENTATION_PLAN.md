@@ -53,6 +53,25 @@ prints `6FVZ747` and PASSES. `pytest tests/` still green.
 
 ## Step 1 — THE core fix: IOU box tracking + selective OCR (main effort)
 
+> **DONE (2026-07-16). Validated on `demo.mp4` — both pipelines now emit a
+> clean 8-event table with all 7 clearly-readable plates correct and zero
+> fragment/misread rows:**
+>
+> | Pipeline | Before (per-frame) | After (tracking) | Speedup |
+> |---|---|---|---|
+> | Pi / RapidOCR | 1171.7s, 14 events (fragmented) | **103s, 8 events (clean)** | **~11x** |
+> | Dev / PaddleOCR | ~120s, 10 events | **64s, 8 events (clean)** | ~2x |
+>
+> Implemented as `tracking.py` (pure `PlateTracker`) + `video.py` (shared cv2
+> driver, engine funcs injected) + a 3rd dedup pass `absorb_fragments` (folds a
+> partial read like `HZ` into the `L-605-HZ` it's a substring of — YOLO
+> sometimes emits a second partial box of one plate) + a `MIN_PLATE_LEN` stub
+> filter. Both `pipeline.py` and `pi/pipeline.py` `process_video` now delegate
+> to the shared driver. 10 new tracking tests; full suite 25 passed. Only gap
+> vs. the old reference: the marginal `ZH-509-1` trailer-plate (conf 0.87 in the
+> old run) didn't surface as its own event — revisit if it turns out to matter
+> for the tractor/trailer dual-plate case (Step 5).
+
 ### New module: `license_plate_pipeline/tracking.py`
 
 Pure logic, **no ML imports** (same philosophy as `dedup.py`) — takes boxes

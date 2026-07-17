@@ -397,7 +397,26 @@ harmful contrast step). `select_plate_text` and `pad_box` are duplicated
 `test_pi_ocr.py` exist so the duplicated copies can't silently drift from
 the originals.
 
-### Pi Pipeline Validation — mixed result, not a clean win
+### Pi Pipeline Validation — RESOLVED by tracking (2026-07-16)
+
+The "mixed result" below was the per-frame pipeline. **Fixed** by IOU box
+tracking + selective OCR (see `IMPLEMENTATION_PLAN.md` Step 1): OCR now runs a
+few times per tracked plate instead of every frame. Re-validated on `demo.mp4`:
+
+- **Pi / RapidOCR: 1171.7s → 103s (~11x faster), 14 fragmented events → 8
+  clean events**, all 7 clearly-readable plates correct, no fragment/misread
+  rows (`R-197-G3` now read correctly, where before it was `197-G9`).
+- **Dev / PaddleOCR: ~120s → 64s, also 8 clean events.**
+- The fragment rows the per-frame run produced (`94-JV`, `4-LX`, `-RS`, `66`,
+  `197-G9`) are gone — same-track best-of-N read selection plus a substring
+  "absorb fragment" dedup pass handles them.
+- One regression vs. the old reference: the marginal `ZH-509-1` (0.87 conf, 8
+  frames — a likely trailer plate) no longer appears as its own event. Flagged
+  for the tractor/trailer work (Step 5), not chased now.
+
+The original per-frame analysis is kept below for history.
+
+### Pi Pipeline Validation — mixed result, not a clean win (per-frame, superseded)
 
 Full `license_plate_pipeline.pi.pipeline` run against `demo.mp4` (same video,
 same dedup logic, same machine), compared against the already-validated
