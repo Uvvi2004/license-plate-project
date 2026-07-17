@@ -188,19 +188,32 @@ conf). Tests in `tests/test_validation.py` built from the actual failures.
 ## Step 3 — English OCR models (warranted; validate on real Pi footage)
 
 The paddle2onnx conversion on Windows is dead-ended (DLL/ABI error,
-documented in PROJECT_CONTEXT.md). Do **not** resume debugging it. Cheaper
-unblock options, in order:
+documented in PROJECT_CONTEXT.md). Do **not** resume debugging it.
 
-1. **Download pre-converted English ONNX models from RapidOCR's own model
-   zoo** (RapidAI publishes converted PP-OCR models — ModelScope / Hugging
-   Face / their docs). Need: an `en_PP-OCRv3` or `v4` **rec** model + the
-   matching English dict; pass via RapidOCR's `rec_model_path` /
-   `rec_keys_path` params (support confirmed by reading its source). A
-   smaller/mobile **det** model from the same zoo would also cut the ~950 ms.
-   No conversion tooling at all.
-2. **WSL2 or a Linux docker container** for a one-shot paddle2onnx run (the
-   DLL failure is Windows-specific).
-3. Hand-rolled conversion — last resort only.
+> **DONE / DECIDED (2026-07-17): keep the Chinese model — English is worse.**
+> Downloaded the English PP-OCRv4 and PP-OCRv5 `rec` models + dicts from
+> ModelScope (RapidAI/RapidOCR) and wired them into RapidOCR via
+> `rec_model_path`/`rec_keys_path`. Then benchmarked head-to-head on real plate
+> crops (demo2 + four casey-video plates). **The bundled Chinese PP-OCRv4 rec
+> model won decisively — 4/4 plates correct vs. English-v4 1/4, English-v5 2/4**
+> (the English "mobile" models are smaller/weaker and truncate/misread:
+> `CG4457T`→`C644571`, `BFE3975`→`BEE3975`). So the intuitive "swap to English"
+> actually *regresses* accuracy.
+>
+> **Resolution:** keep RapidOCR's default (Chinese PP-OCRv4) recognition model —
+> it's simply the better OCR. Its only downside, occasional Chinese glyphs, is
+> already fully removed by the Step 2.5 validation layer, which strips non-ASCII
+> before any plate is emitted (`皖EKH9211`→`EKH9211`). Net: best available Latin
+> accuracy AND a guaranteed Chinese-free output. English model files were
+> downloaded, tested, and deleted (not committed). If a *stronger* English/Latin
+> plate model appears later (or real warehouse footage shows the Chinese model
+> failing specifically on US plates), revisit — but not with the mobile models.
+>
+> The two fallback options below were never needed; kept for the record.
+>
+> - **WSL2 or a Linux docker container** for a one-shot paddle2onnx run (the
+>   Windows DLL failure is Windows-specific).
+> - Hand-rolled conversion — last resort only.
 
 ## Step 4 — Pi deployment (existing handoff, now actually viable)
 

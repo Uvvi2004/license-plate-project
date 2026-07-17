@@ -37,6 +37,12 @@ _reader = None
 def get_reader():
     global _reader
     if _reader is None:
+        # RapidOCR's bundled PP-OCRv4 recognition model is kept deliberately.
+        # The English "mobile" alternatives (PP-OCRv4/v5) were tested head-to-head
+        # and read Latin plates LESS accurately (4/4 vs 1-2/4 on real plate crops -
+        # see IMPLEMENTATION_PLAN.md Step 3). Its only downside, occasional Chinese
+        # glyphs, is fully removed downstream by license_plate_pipeline.validation
+        # (non-ASCII is stripped before a plate is ever emitted).
         logger.info("Loading RapidOCR engine")
         _reader = RapidOCR()
     return _reader
