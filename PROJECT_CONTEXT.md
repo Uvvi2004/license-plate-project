@@ -15,6 +15,17 @@ self-described tech beginner learning concepts alongside implementation.
 > everything below — OCR speed fix (tracking), Pi deployment, and future
 > truck/trailer detection — lives in **`IMPLEMENTATION_PLAN.md`** at repo
 > root. Start there when picking up work.
+>
+> **Progress (2026-07-17):** tracking done (~11x faster, IMPLEMENTATION_PLAN
+> Step 1). Tested on 3 uploaded 4K real-world clips → added a **plate-validation
+> layer** (`validation.py`: strips non-ASCII, requires letter+digit, 5-8 chars,
+> confidence floor) that clears numeric-fragment / state-name / Chinese-glyph
+> junk. **English OCR models evaluated and rejected** — the Chinese default is
+> more accurate (4/4 vs 1-2/4 on real crops); validation guarantees Chinese-free
+> output anyway (Step 3). Added the **live deployment path**
+> (`pi_scripts/run_live.py` → `plate_events.csv` via `video.process_camera`).
+> Remaining before "enterprise": run on the physical Pi (Steps 4), systemd
+> supervision, then Postgres (Phase 10).
 
 ## Roadmap & Status (expanded toward enterprise-ready, 2026-07-14)
 
