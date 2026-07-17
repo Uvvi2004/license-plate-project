@@ -51,6 +51,16 @@ MIN_PLATE_LEN = 4
 # The measured fix for OCR speed on both engines: track each physical plate
 # across frames by box overlap (IOU) and OCR it only a few times, instead of
 # running the ~1s-per-call OCR on every frame it's visible.
+# Live camera capture (Pi deployment). A gate camera does not need 4K/30fps -
+# 720p keeps plates readable while making per-frame detection far cheaper, which
+# is what lets a Pi keep up in real time. See license_plate_pipeline/video.py
+# process_camera and pi_scripts/run_live.py.
+CAPTURE_WIDTH = 1280
+CAPTURE_HEIGHT = 720
+# Suppress logging the same plate twice within this window (a vehicle that
+# lingers/stops can close and re-open as a second track).
+LIVE_DEDUP_WINDOW_SECONDS = 10.0
+
 IOU_THRESHOLD = 0.2         # min box overlap to count as the same plate frame-to-frame
                             # (0.2 not 0.3: a large plate crossing the frame moves enough
                             #  per frame that 0.3 split single plates into two tracks)

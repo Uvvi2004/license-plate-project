@@ -88,11 +88,39 @@ screen-share) showing your webcam feed with detected plates boxed and labeled,
 same as the notebook's step 10 on the dev machine. Press `q` in the window to
 stop.
 
+## 7. Run the live logger (the actual deployment)
+
+```bash
+python pi_scripts/run_live.py                 # camera 0 -> plate_events.csv
+python pi_scripts/run_live.py --camera 1      # if your USB webcam is index 1
+python pi_scripts/run_live.py --preview       # also show a live window (needs a display)
+```
+
+This is what runs at the gate: it opens the camera at 720p, runs the tracked
+pipeline (detection every frame, OCR only a few times per vehicle), and appends
+**one validated row per vehicle** to `plate_events.csv` the moment it leaves
+frame — `iso_time, plate_text, confidence, first_seen, last_seen, frames`.
+Output is already filtered (no junk, no Chinese glyphs, confidence floor). Stop
+with **Ctrl-C** (or `q` in the preview window).
+
+Watch the first run for two things: does it log each passing vehicle once (not
+several times, not zero), and does the CSV plate text match what you can read by
+eye. If a vehicle logs multiple times, the tracking/dedup tuning in
+`license_plate_pipeline/config.py` is where to adjust — report back with the CSV
+and we'll tune against real numbers.
+
+Capture resolution is set in `config.py` (`CAPTURE_WIDTH`/`CAPTURE_HEIGHT`,
+default 1280x720). If the Pi can't keep up, lower it — a gate camera doesn't need
+more; that's the main knob for real-time performance on the Pi.
+
 ## What's Deliberately Not Done Yet
 
-- No `systemd` service / auto-restart supervision (Phase 9 remaining item)
-- No PostgreSQL connection or dashboard (Phase 10)
-- No physical camera mounting/placement decision (Phase 11)
+- No `systemd` service / auto-restart supervision (so `run_live.py` starts on
+  boot and restarts on crash) — Phase 9 remaining item, add once the live logger
+  is confirmed working by hand.
+- No PostgreSQL connection or dashboard (Phase 10) — `run_live.py` writes a CSV
+  on purpose, so the pipeline can be proven on real trucks before adding a DB.
+- No physical camera mounting/placement decision (Phase 11).
 
-This gets inference working and validated on the actual hardware — the next
+Steps 5–6 validate inference on the hardware; step 7 is the real thing. The next
 step after that is deciding what "success" looks like for the first live demo.

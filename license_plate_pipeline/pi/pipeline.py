@@ -11,6 +11,7 @@ import cv2
 from license_plate_pipeline.config import GAP_SECONDS, MIN_FRAMES
 from license_plate_pipeline.pi.detection import detect_boxes
 from license_plate_pipeline.pi.ocr import read_crop, select_plate_text
+from license_plate_pipeline.video import process_camera as _process_camera
 from license_plate_pipeline.video import process_video_tracked
 
 logger = logging.getLogger(__name__)
@@ -52,4 +53,17 @@ def process_video(video_path, gap_seconds=GAP_SECONDS, min_frames=MIN_FRAMES):
     return process_video_tracked(
         video_path, detect_boxes, read_crop, select_plate_text,
         gap_seconds=gap_seconds, min_frames=min_frames,
+    )
+
+
+def process_camera(camera_index=0, **kwargs):
+    """Live-camera generator yielding one validated event per vehicle (Pi engine).
+
+    Thin wrapper over license_plate_pipeline.video.process_camera with the ONNX
+    detector + RapidOCR injected. See that function for the full contract; extra
+    kwargs (width/height/on_frame/stop/...) pass straight through.
+    """
+    return _process_camera(
+        detect_boxes, read_crop, select_plate_text,
+        camera_index=camera_index, **kwargs,
     )

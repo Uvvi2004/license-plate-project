@@ -182,8 +182,24 @@ class PlateTracker:
                 track.readings.append((text, confidence))
                 return
 
+    def drain_finished(self):
+        """Return events for tracks that closed since the last call, and clear them.
+
+        For live/streaming use: a vehicle is emitted as soon as it leaves the
+        frame (its track ages out), rather than only at the end of a file. Tracks
+        still open are left untouched. Returns [] when nothing has closed.
+        """
+        events = [t.to_event() for t in self._finished]
+        self._finished = []
+        return [e for e in events if e is not None]
+
     def finish(self):
-        """Close all open tracks and return one event dict per resolved plate."""
+        """Close all open tracks and return one event dict per resolved plate.
+
+        For file processing. If drain_finished() was being called during the run,
+        this returns only the tracks still open at the end (already-drained ones
+        were cleared) - so the two are safe to mix without double-emitting.
+        """
         self._finished.extend(self._open)
         self._open = []
         events = [t.to_event() for t in self._finished]

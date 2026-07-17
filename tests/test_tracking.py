@@ -117,3 +117,32 @@ def test_track_with_no_readings_is_dropped():
     for i in range(10):
         t.update([box], timestamp=i * 0.1, frame_idx=i)  # never add_reading
     assert t.finish() == []
+
+
+# --- streaming drain (live deployment) -------------------------------------
+
+def test_drain_emits_closed_track_then_clears():
+    t = PlateTracker(max_missed_frames=2)
+    box = (100, 100, 200, 150)
+    # Present for 4 frames, then gone long enough to close.
+    seq = [box, box, box, box, None, None, None, None]
+    drained = []
+    for i, b in enumerate(seq):
+        boxes = [] if b is None else [b]
+        for track_id, _bb in t.update(boxes, timestamp=i * 0.1, frame_idx=i):
+            t.add_reading(track_id, "DRN123", 0.99)
+        drained.extend(t.drain_finished())
+    assert len(drained) == 1
+    assert drained[0]["plate_text"] == "DRN123"
+    # Once drained, it isn't returned again by finish().
+    assert t.finish() == []
+
+
+def test_drain_returns_empty_while_track_still_open():
+    t = _tracker()
+    box = (100, 100, 200, 150)
+    for i in range(5):
+        for track_id, _bb in t.update([box], timestamp=i * 0.1, frame_idx=i):
+            t.add_reading(track_id, "OPEN12", 0.99)
+        assert t.drain_finished() == []  # nothing closed yet
+    assert len(t.finish()) == 1  # still open until finish()
