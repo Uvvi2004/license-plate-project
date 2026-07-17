@@ -11,6 +11,11 @@ core data pipeline (business/privacy requirement).
 Current phase: personal/learning prototype on a Raspberry Pi 5, built by a
 self-described tech beginner learning concepts alongside implementation.
 
+> **Forward plan (2026-07-16):** the ordered, gated implementation plan for
+> everything below — OCR speed fix (tracking), Pi deployment, and future
+> truck/trailer detection — lives in **`IMPLEMENTATION_PLAN.md`** at repo
+> root. Start there when picking up work.
+
 ## Roadmap & Status (expanded toward enterprise-ready, 2026-07-14)
 
 Original plan was 10 phases to get a working prototype. Expanded below to
@@ -29,8 +34,15 @@ treating "prototype works" and "enterprise-ready" as the same finish line.
    - ✅ **Data cleaning: confidence-based dedup clustering** — see "Dedup
      Clustering" section below for the full (honest, two-failed-attempts)
      writeup
+   - ⬜ **IOU box tracking + selective OCR** — the measured fix for OCR
+     slowness on BOTH engines (root cause: ~95% of each OCR call is internal
+     text-detection, and we call OCR every frame — see "Pi Pipeline
+     Validation" resolution below). Full design + validation gates in
+     `IMPLEMENTATION_PLAN.md` Step 1. This is the prerequisite for viable
+     Pi speed, and it subsumes the "box-tracking before Postgres" item.
    - ⬜ Validate against additional real-world test videos (to be uploaded)
    - ⬜ Live webcam feed test on this laptop, before moving to the Pi
+     (step 10 of the notebook now runs the pi/ ONNX pipeline for this)
 8. 🔶 Raspberry Pi 5 + USB webcam deployment (hardware now in hand; user has
     a plain USB webcam, not the CSI Camera Module 3 originally planned —
     simpler, works via standard `cv2.VideoCapture`/V4L2, no `picamera2` needed)
@@ -96,6 +108,10 @@ treating "prototype works" and "enterprise-ready" as the same finish line.
       entirely (still need to check placement relative to dock-door openings
       — indoor doesn't fully block wind-driven rain or condensation there)
     - ⬜ Redundancy/failover considerations (backup camera/compute, UPS)
+    - ⬜ **Truck/trailer detection** — associate each plate with the vehicle
+      it's mounted on (tractor vs. trailer, per the TN two-plate section).
+      Two-phase approach (COCO-pretrained vehicle model first, site-tuned
+      multi-class retrain later) — see `IMPLEMENTATION_PLAN.md` Step 5.
     - **Honest scope note:** this phase closes *some* of the gap between a
       hobbyist Pi rig and true enterprise ALPR (Genetec/Rekor/Axis-class
       systems bring hardware redundancy, weatherproof purpose-built cameras,
@@ -417,12 +433,21 @@ format) rather than a universal RapidOCR weakness — but it's still a real,
 measured signal about reliability across many frames, which is exactly the
 condition a live camera feed will also face.
 
-**Decision needed, not yet made:** whether to accept this tradeoff, tune
-RapidOCR's configuration, fall back to a manual `paddle2onnx` conversion
-(more custom code, but closer fidelity to the already-validated PaddleOCR
-behavior), or something else. Flagged to the user rather than resolved
-silently — this is exactly the fallback gate the original plan built in for
-this scenario.
+**RESOLVED (2026-07-16) — root cause found by benchmarking, plan written:**
+measured on the real `demo2.jpg` plate crop, ~95% of every OCR call (both
+engines — same det+cls+rec architecture) is the *internal text-detection*
+stage re-finding text YOLO already located: RapidOCR full pipeline 1363 ms,
+without angle-cls 966 ms, recognition alone **22 ms**. Upscaling the crop
+1x/2x/3x made no accuracy difference for RapidOCR. So the engine was never
+the real problem — **calling OCR on every frame (~600+ calls per 21s video)
+is**, and PaddleOCR's "laggy" feel on live webcam has the same root cause.
+The fix is IOU box tracking + selective OCR (~3-5 reads per physical plate
+instead of ~50+), which also solves the OCR-flicker dedup fragmentation at
+the source (same track = same plate, regardless of text flicker). Full
+ordered plan with validation gates: **`IMPLEMENTATION_PLAN.md`** at repo
+root. The `paddle2onnx` Windows DLL debugging is explicitly abandoned
+(superseded by RapidOCR's model zoo of pre-converted English models, if
+Step 2 of the plan even shows they're still needed).
 
 ## Concepts Already Covered (don't re-explain from scratch)
 

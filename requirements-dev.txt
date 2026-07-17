@@ -2,3 +2,10 @@
 ipykernel==7.3.0
 jupyter==1.1.1
 pytest==9.1.1
+
+# For running/testing license_plate_pipeline/pi/ (the Pi-bound ONNX/RapidOCR
+# pipeline) here on the dev machine, e.g. via the notebook's live webcam cell.
+# Kept separate from requirements.txt since the Pi itself uses requirements-pi.txt,
+# not this file.
+onnxruntime==1.23.2
+rapidocr-onnxruntime==1.4.4
