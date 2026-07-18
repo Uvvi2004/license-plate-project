@@ -84,4 +84,15 @@ def read_crop(crop):
 
     if not result:
         return []
-    return [(text, confidence) for _box, text, confidence in result]
+
+    # RapidOCR returns [box, text, score] per line. `score` is a float in some
+    # versions (1.4.x) but a STRING in others (1.2.3, which is what installs on
+    # the Pi's Python 3.13) - coerce to float so every downstream numeric compare
+    # (confidence floor, best-of-N selection) works regardless of version.
+    readings = []
+    for _box, text, score in result:
+        try:
+            readings.append((str(text), float(score)))
+        except (TypeError, ValueError):
+            continue
+    return readings
