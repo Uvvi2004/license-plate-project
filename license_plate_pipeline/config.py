@@ -65,7 +65,11 @@ IOU_THRESHOLD = 0.2         # min box overlap to count as the same plate frame-t
                             # (0.2 not 0.3: a large plate crossing the frame moves enough
                             #  per frame that 0.3 split single plates into two tracks)
 MAX_MISSED_FRAMES = 20      # keep a track alive through this many plate-less frames (~0.7s @30fps)
-MIN_TRACK_FRAMES = 3        # don't OCR (or emit) a track seen fewer times - filters flicker/noise
+MIN_TRACK_FRAMES = 3        # wait this many frames before OCR-ing a track. Not just noise-
+                            # filtering: tested MIN_TRACK_FRAMES=1 and it REGRESSED accuracy
+                            # (a plate's early far/blurry frames produced a high-confidence
+                            # MISREAD that beat the correct later read - R-197-G3 -> 197-G9).
+                            # Skipping the first couple frames is an accuracy feature.
 OCR_FRAME_INTERVAL = 8      # once eligible, OCR a track at most once per this many frames
 MAX_OCR_PER_TRACK = 8       # hard cap on OCR calls per physical plate (more samples = better
                             #  chance of catching the sharp mid-transit frame)
