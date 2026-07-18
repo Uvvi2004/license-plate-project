@@ -12,3 +12,8 @@ test_images/pexels-*.mp4
 test_images/Traffic Control CCTV.mp4
 # Live logger output
 plate_events.csv
+
+# Personal working docs - kept local only, not on GitHub (a proper README comes later)
+PROJECT_SUMMARY.md
+PROJECT_CONTEXT.md
+IMPLEMENTATION_PLAN.md
