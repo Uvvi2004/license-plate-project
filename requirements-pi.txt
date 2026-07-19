@@ -1,7 +1,12 @@
-numpy==2.2.6
-opencv-python==5.0.0.93
-onnxruntime==1.23.2
+# Raspberry Pi (ARM64) runtime dependencies. Install into a Python 3.12 venv
+# with uv - see PI_SETUP.md. rapidocr-onnxruntime is pinned to 1.4.4 because it
+# uses the accurate PP-OCRv4 model AND requires Python <3.13; the others are left
+# unpinned so pip resolves whatever ARM64 wheels exist for your Python version
+# (exact pins validated on x86 don't always have matching Pi wheels).
+numpy
+opencv-python
+onnxruntime
 rapidocr-onnxruntime==1.4.4
-pandas==2.3.3
-RapidFuzz==3.14.5
-tqdm==4.68.4
+pandas
+rapidfuzz
+tqdm
