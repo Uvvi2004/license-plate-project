@@ -10,3 +10,4 @@ rapidocr-onnxruntime==1.4.4
 pandas
 rapidfuzz
 tqdm
+psycopg2-binary        # PostgreSQL driver (Phase 10 - local event store; see POSTGRES_SETUP.md)
