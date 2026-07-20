@@ -86,8 +86,21 @@ New Connection → PostgreSQL:
 - **SSH tab:** check "Use SSH Tunnel", Host = Pi's IP, Port `22`, User `raspberry`,
   Password = your Pi login.
 
+In DBeaver's SSH tab, set **Authentication Method = `Password`** (it defaults to
+"Public Key", which causes an "exhausted authentication methods" error). The SSH
+password is your **Pi login** password; the Main-tab password is the **Postgres**
+password — two different passwords.
+
 Test Connection → Finish. Open `plate_events` → Data tab → enable auto-refresh
 (circular-arrows button) for a live view.
+
+**If the Pi changes network / its IP changes** (DHCP can reassign it after a
+reboot or moving networks): update the **SSH tab's Host** to the Pi's new
+`hostname -I` value. To stop chasing IPs, either use the hostname
+**`raspberrypi.local`** as the SSH host (works on most home networks via mDNS) or
+reserve a static IP for the Pi in your router. Note the **database side never
+changes** — `DATABASE_URL` uses `host=localhost` because Postgres runs on the Pi
+itself; only your laptop's SSH tunnel target depends on the Pi's address.
 
 ## Troubleshooting
 

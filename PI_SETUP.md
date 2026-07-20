@@ -91,14 +91,21 @@ Notes:
   gate — a truck sits in view for seconds. Reading is most reliable on a flat,
   straight-on, well-lit plate that fills the frame.
 
-## Starting a later session
+## Running it again (every time after the first setup)
 
-Each time you reconnect:
+The one-time setup above (system deps, Python 3.12 env, installs) is done **once**.
+Every session after that is just:
+
 ```bash
 cd ~/license-plate-project
 source .venv312/bin/activate
-python pi_scripts/run_live.py
+python pi_scripts/run_live.py --db --camera-id gate1    # -> Postgres (DATABASE_URL lives in ~/.bashrc)
+#   or:  python pi_scripts/run_live.py                  # -> CSV only, no database
+#   add  --preview                                      # live window (Pi DESKTOP terminal, not SSH)
 ```
+
+No reinstalling. Run `git pull` first if you want the latest code. The database
+itself (install + viewing it from your laptop) is covered in **POSTGRES_SETUP.md**.
 
 ## What's deliberately not done yet
 
